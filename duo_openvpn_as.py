@@ -21,6 +21,10 @@ PROXY_PORT = 8080
 # authentications (like web server access).
 SKIP_DUO_ON_VPN_AUTH = False
 
+# Set AUTO_PUSH to True to automatically push authentication requests
+# to mobile devices.
+AUTO_PUSH = True
+
 # ------------------------------------------------------------------
 
 import syslog
@@ -603,6 +607,25 @@ class OpenVPNIntegration(Client):
 
         return result, status
 
+    def challenge(username, duo_pass, ipaddr, authret):
+        try:
+            result, msg = api.auth(username, duo_pass, ipaddr)
+            if result == API_RESULT_ALLOW:
+                authret['status'] = SUCCEED
+                authret['reason'] = msg
+            else:
+                authret['status'] = FAIL
+                authret['reason'] = msg
+            authret['client_reason'] = authret['reason']
+        except Exception as e:
+            log(traceback.format_exc())
+            authret['status'] = FAIL
+            authret['reason'] = "Exception caught in auth: %s" % e
+            authret['client_reason'] = \
+                "Unknown error communicating with Duo service"
+
+        return authret
+
 api = OpenVPNIntegration(IKEY, SKEY, HOST)
 if PROXY_HOST:
     api.set_proxy(host=PROXY_HOST, port=PROXY_PORT)
@@ -628,32 +651,21 @@ def post_auth_cr(authcred, attributes, authret, info, crstate):
     if crstate.get('challenge'):
         # response to dynamic challenge
         duo_pass = crstate.response()
-
         # received response
         crstate.expire()
-        try:
-            result, msg = api.auth(username, duo_pass, ipaddr)
-            if result == API_RESULT_ALLOW:
-                authret['status'] = SUCCEED
-                authret['reason'] = msg
-            else:
-                authret['status'] = FAIL
-                authret['reason'] = msg
-            authret['client_reason'] = authret['reason']
-        except Exception as e:
-            log(traceback.format_exc())
-            authret['status'] = FAIL
-            authret['reason'] = "Exception caught in auth: %s" % e
-            authret['client_reason'] = \
-                "Unknown error communicating with Duo service"
+        authret = api.challenge(username, duo_pass, ipaddr, authret)
     else:
         # initial auth request; issue challenge
         try:
             result, msg = api.preauth(username)
             if result == API_RESULT_AUTH:
-                # save state indicating challenge has been issued
-                crstate['challenge'] = True
-                crstate.challenge_post_auth(authret, msg, echo=True)
+                if AUTO_PUSH:
+                    log('AUTO_PUSH enabled, skipping challenge')
+                    authret = api.challenge(username, 'push', ipaddr, authret)
+                else
+                    # save state indicating challenge has been issued
+                    crstate['challenge'] = True
+                    crstate.challenge_post_auth(authret, msg, echo=True)
             elif result == API_RESULT_ENROLL:
                 authret['status'] = FAIL
 
