@@ -607,7 +607,7 @@ class OpenVPNIntegration(Client):
 
         return result, status
 
-    def challenge(username, duo_pass, ipaddr, authret):
+    def challenge(self, username, duo_pass, ipaddr, authret):
         try:
             result, msg = api.auth(username, duo_pass, ipaddr)
             if result == API_RESULT_ALLOW:
