@@ -662,7 +662,7 @@ def post_auth_cr(authcred, attributes, authret, info, crstate):
                 if AUTO_PUSH:
                     log('AUTO_PUSH enabled, skipping challenge')
                     authret = api.challenge(username, 'push', ipaddr, authret)
-                else
+                else:
                     # save state indicating challenge has been issued
                     crstate['challenge'] = True
                     crstate.challenge_post_auth(authret, msg, echo=True)
